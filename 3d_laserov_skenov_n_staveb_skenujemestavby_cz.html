@@ -1,0 +1,1250 @@
+<!DOCTYPE html>
+<html lang="cs" class="scroll-smooth">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>skenujemestavby.cz | Přesné 3D laserové skenování staveb a BIM pasportizace</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Oswald:wght@700&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['JetBrains Mono', 'monospace'],
+                        logo: ['Oswald', 'sans-serif'],
+                    },
+                    colors: {
+                        bgDark: '#060709',
+                        bgCard: '#0c0e12',
+                        brandGold: '#F5B82E',
+                        brandGoldHover: '#ffc947',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        :root {
+            color-scheme: dark;
+        }
+        body {
+            background-color: #060709;
+            color: #f1f5f9;
+            font-family: 'Inter', sans-serif;
+            overflow-x: hidden;
+            selection-background-color: #F5B82E;
+            selection-color: #060709;
+        }
+
+        #lidar-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        .cad-grid-bg {
+            background-size: 48px 48px;
+            background-image: 
+                linear-gradient(to right, rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+                linear-gradient(to bottom, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+        }
+
+        .glass-panel {
+            background: rgba(11, 13, 18, 0.82);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.75);
+        }
+
+        .glass-panel-hover {
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+        .glass-panel-hover:hover {
+            border-color: rgba(245, 184, 46, 0.35);
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.85);
+            transform: translateY(-3px);
+        }
+
+        input[type=range].lidar-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 5px;
+            background: rgba(255, 255, 255, 0.14);
+            border-radius: 999px;
+            outline: none;
+        }
+        input[type=range].lidar-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: #F5B82E;
+            cursor: pointer;
+            box-shadow: 0 0 12px rgba(245, 184, 46, 0.7);
+            border: 2px solid #060709;
+            transition: transform 0.15s ease;
+        }
+        input[type=range].lidar-slider::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        .content-column-backdrop {
+            position: relative;
+            z-index: 10;
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #060709;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #262b36;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #F5B82E;
+        }
+    </style>
+</head>
+<body class="cad-grid-bg antialiased selection:bg-[#F5B82E] selection:text-black">
+
+    <canvas id="lidar-canvas"></canvas>
+
+    <header class="fixed top-0 left-0 right-0 z-40 border-b border-white/10 bg-[#060709]/85 backdrop-blur-xl">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+            <a href="#hero" class="flex items-center gap-3.5 group" aria-label="skenujemestavby.cz">
+                <svg class="w-12 h-12 sm:w-14 sm:h-14 shrink-0 transition-transform duration-300 group-hover:scale-105" viewBox="0 0 130 135" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <polygon points="73,10 112,35 112,124 73,124" fill="#D5D7DC"/>
+                    <polygon points="45,33 73,10 73,95 45,72" stroke="#FFFFFF" stroke-width="4.2" stroke-linejoin="round" fill="none"/>
+                    <line x1="45" y1="45" x2="73" y2="22" stroke="#FFFFFF" stroke-width="3.8"/>
+                    <line x1="45" y1="57" x2="73" y2="34" stroke="#FFFFFF" stroke-width="3.8"/>
+                    <line x1="45" y1="69" x2="73" y2="46" stroke="#FFFFFF" stroke-width="3.8"/>
+                    <line x1="52" y1="77" x2="73" y2="59" stroke="#FFFFFF" stroke-width="3.8"/>
+                    <line x1="61" y1="85" x2="73" y2="74" stroke="#FFFFFF" stroke-width="3.8"/>
+                    <path fill="#F4F5F7" fill-rule="evenodd" d="
+                        M 28,53
+                        L 64,82
+                        L 64,124
+                        L 28,124
+                        L 28,113
+                        L 35,113
+                        L 35,104
+                        L 28,104
+                        L 28,89
+                        L 34,89
+                        L 34,81
+                        L 28,81
+                        L 28,72
+                        L 33,72
+                        L 33,64
+                        L 28,64
+                        Z
+                        M 36,80 L 45,80 L 45,89 L 36,89 Z
+                    "/>
+                    <rect x="20" y="45" width="7.5" height="7.5" fill="#D5D7DC"/>
+                    <rect x="11" y="54" width="7.5" height="7.5" fill="#E2E4E8"/>
+                    <rect x="2"  y="61" width="7.5" height="7.5" fill="#D5D7DC"/>
+                    <rect x="19" y="62" width="7.5" height="7.5" fill="#FFFFFF"/>
+                    <rect x="11" y="70" width="7.5" height="7.5" fill="#D5D7DC"/>
+                    <rect x="19" y="75" width="7.5" height="7.5" fill="#E2E4E8"/>
+                    <rect x="6"  y="81" width="7.5" height="7.5" fill="#FFFFFF"/>
+                    <rect x="13" y="88" width="7.5" height="7.5" fill="#D5D7DC"/>
+                    <rect x="20" y="95" width="7.5" height="7.5" fill="#FFFFFF"/>
+                    <rect x="2"  y="101" width="7.5" height="7.5" fill="#E2E4E8"/>
+                    <rect x="12" y="102" width="7.5" height="7.5" fill="#FFFFFF"/>
+                    <rect x="19" y="110" width="7.5" height="7.5" fill="#D5D7DC"/>
+                    <rect x="11" y="117" width="7.5" height="7.5" fill="#E2E4E8"/>
+                    <rect x="21" y="122" width="7.5" height="7.5" fill="#FFFFFF"/>
+                </svg>
+                <div class="font-logo uppercase font-bold tracking-tight leading-[0.92] select-none">
+                    <div class="text-white text-[17px] sm:text-[19px]">SKENUJEME</div>
+                    <div class="text-white text-[17px] sm:text-[19px]">STAVBY</div>
+                    <div class="text-[#F5B82E] text-[17px] sm:text-[19px]">.CZ</div>
+                </div>
+            </a>
+
+            <nav class="hidden md:flex items-center gap-8 text-sm font-medium text-slate-300">
+                <a href="#proces" class="hover:text-white transition-colors">Jak pracujeme</a>
+                <a href="#sluzby" class="hover:text-white transition-colors">Služby</a>
+                <a href="#vystupy" class="hover:text-white transition-colors">Výstupy a BIM</a>
+                <a href="#kontakt" class="hover:text-white transition-colors">Kalkulace a kontakt</a>
+            </nav>
+
+            <div class="flex items-center gap-3">
+                <a href="#kontakt" class="px-5 py-2.5 rounded-lg bg-[#F5B82E] text-slate-950 font-bold text-xs sm:text-sm hover:bg-[#ffc947] transition-all shadow-lg shadow-[#F5B82E]/15">
+                    Nezávazná poptávka
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <section id="hero" class="relative min-h-screen pt-28 pb-12 flex flex-col justify-between z-10 overflow-hidden">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 w-full flex-1 flex flex-col lg:flex-row items-center justify-between gap-8 my-auto">
+            
+            <div class="w-full lg:w-[54%] space-y-6 pt-4 lg:pt-0">
+                <div class="inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-full glass-panel border-white/15">
+                    <span class="inline-block w-2 h-2 rounded-full bg-[#F5B82E]"></span>
+                    <span class="font-mono text-xs font-medium text-slate-200 tracking-wide uppercase">
+                        3D Laserové skenování • Pasportizace • BIM
+                    </span>
+                </div>
+
+                <h1 class="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight leading-[1.08] text-white">
+                    Přesné zaměření skutečného stavu <span class="text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-200 to-[#F5B82E]">budov a konstrukcí</span>
+                </h1>
+
+                <p class="text-base sm:text-lg text-slate-300 max-w-xl leading-relaxed font-normal">
+                    Digitalizujeme rodinné a bytové domy, průmyslové haly, historické památky i dopravní stavby. Dodáváme spolehlivé <strong class="text-white font-semibold">2D výkresy</strong> a inteligentní <strong class="text-white font-semibold">3D BIM modely</strong> bez kompromisů.
+                </p>
+
+                <div class="flex flex-wrap items-center gap-4 pt-2">
+                    <a href="#kontakt" class="px-7 py-4 rounded-xl bg-[#F5B82E] text-slate-950 font-bold text-base shadow-xl shadow-[#F5B82E]/20 hover:bg-[#ffc947] hover:scale-[1.02] transition-all flex items-center gap-2">
+                        <span>Poptat zaměření stavby</span>
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M17 8l4 4m0 0l-4 4m4-4H3"/></svg>
+                    </a>
+                    <a href="#sluzby" class="px-6 py-4 rounded-xl glass-panel hover:border-white/40 text-white font-semibold text-base transition-all">
+                        Naše služby a výstupy
+                    </a>
+                </div>
+
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-4 max-w-xl">
+                    <div class="glass-panel rounded-xl p-4 border-l-2 border-l-[#F5B82E]">
+                        <div class="font-mono text-xl sm:text-2xl font-bold text-white">± 1.5 <span class="text-sm text-slate-300">mm</span></div>
+                        <div class="text-xs text-slate-400 mt-0.5">Geodetická přesnost</div>
+                    </div>
+                    <div class="glass-panel rounded-xl p-4 border-l-2 border-l-white/60">
+                        <div class="font-mono text-xl sm:text-2xl font-bold text-white">2D & 3D</div>
+                        <div class="text-xs text-slate-400 mt-0.5">CAD výkresy a BIM modely</div>
+                    </div>
+                    <div class="glass-panel rounded-xl p-4 border-l-2 border-l-slate-500 col-span-2 sm:col-span-1">
+                        <div class="font-mono text-xl sm:text-2xl font-bold text-white">Celá ČR</div>
+                        <div class="text-xs text-slate-400 mt-0.5">Rychlý výjezd do terénu</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="w-full lg:w-[46%] h-[340px] sm:h-[420px] lg:h-[520px] relative pointer-events-none select-none"></div>
+        </div>
+
+        <div class="max-w-7xl mx-auto px-4 w-full flex flex-col items-center justify-center pt-2">
+            <a href="#proces" class="group flex flex-col items-center gap-2 text-slate-400 hover:text-white transition-colors" aria-label="Posunout níže">
+                <span class="font-mono text-[11px] tracking-widest uppercase">Více o našich službách</span>
+                <div class="w-6 h-10 rounded-full border border-slate-600 group-hover:border-[#F5B82E] flex justify-center p-1 transition-colors">
+                    <div class="w-1 h-2.5 rounded-full bg-[#F5B82E] animate-bounce"></div>
+                </div>
+            </a>
+        </div>
+    </section>
+
+    <main class="content-column-backdrop max-w-[900px] mx-auto px-4 sm:px-6 space-y-28 pb-28">
+
+        <!-- SECTION 1: JAK PROBÍHÁ 3D SKENOVÁNÍ -->
+        <section id="proces" class="scroll-mt-28 pt-8">
+            <div class="glass-panel rounded-3xl p-6 sm:p-10 relative overflow-hidden">
+                <div class="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#F5B82E] via-white/60 to-transparent"></div>
+
+                <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8">
+                    <div>
+                        <span class="font-mono text-xs uppercase tracking-widest text-[#F5B82E] block mb-2">Postup spolupráce</span>
+                        <h2 class="text-2xl sm:text-3xl font-bold text-white">Od zaměření v terénu po hotový projekt</h2>
+                    </div>
+                    <p class="text-xs font-mono text-slate-300 bg-white/5 px-3 py-1.5 rounded-lg border border-white/10">
+                        Rychle • Bezkontaktně • Přesně
+                    </p>
+                </div>
+
+                <p class="text-slate-300 text-sm sm:text-base leading-relaxed mb-8">
+                    Pomocí špičkových 3D laserových skenerů zachytíme kompletní geometrii vaší stavby během několika hodin. Nemusíte se obávat zdlouhavého ručního doměřování ani chybějících kót při následném projektování.
+                </p>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div class="p-5 rounded-2xl bg-white/[0.03] border border-white/10 glass-panel-hover">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="font-mono text-xs font-bold px-2.5 py-1 rounded bg-[#F5B82E]/15 text-[#F5B82E] border border-[#F5B82E]/30">01</span>
+                            <span class="font-mono text-xs text-slate-400">Měření na místě</span>
+                        </div>
+                        <h3 class="text-lg font-bold text-white mb-2">Laserové skenování objektu</h3>
+                        <p class="text-sm text-slate-300 leading-relaxed">
+                            V terénu zaměříme exteriér, interiér, krovy i technická zařízení budovy bez omezení provozu. Získáme detailní prostorový otisk celé stavby s milimetrovou přesností.
+                        </p>
+                    </div>
+
+                    <div class="p-5 rounded-2xl bg-white/[0.03] border border-white/10 glass-panel-hover">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="font-mono text-xs font-bold px-2.5 py-1 rounded bg-white/10 text-slate-200 border border-white/20">02</span>
+                            <span class="font-mono text-xs text-slate-400">Zpracování dat</span>
+                        </div>
+                        <h3 class="text-lg font-bold text-white mb-2">Registrace a vyčištění dat</h3>
+                        <p class="text-sm text-slate-300 leading-relaxed">
+                            Jednotlivé skeny spojíme do přesného souřadnicového systému (S-JTSK / Bpv), vyčistíme od rušivých prvků a připravíme optimalizovaný datový podklad.
+                        </p>
+                    </div>
+
+                    <div class="p-5 rounded-2xl bg-white/[0.03] border border-white/10 glass-panel-hover">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="font-mono text-xs font-bold px-2.5 py-1 rounded bg-white/10 text-slate-200 border border-white/20">03</span>
+                            <span class="font-mono text-xs text-slate-400">CAD & BIM projekce</span>
+                        </div>
+                        <h3 class="text-lg font-bold text-white mb-2">Tvorba 3D BIM modelu a 2D výkresů</h3>
+                        <p class="text-sm text-slate-300 leading-relaxed">
+                            Vymodelujeme věrné digitální dvojče v prostředí <strong class="text-white">Autodesk Revit, ArchiCAD nebo AutoCAD</strong>. Zachytíme skutečné tloušťky stěn, průhyby stropů, sklony střech i rozvody TZB.
+                        </p>
+                    </div>
+
+                    <div class="p-5 rounded-2xl bg-white/[0.03] border border-white/10 glass-panel-hover">
+                        <div class="flex items-center justify-between mb-3">
+                            <span class="font-mono text-xs font-bold px-2.5 py-1 rounded bg-white/10 text-slate-200 border border-white/20">04</span>
+                            <span class="font-mono text-xs text-slate-400">Předání výstupů</span>
+                        </div>
+                        <h3 class="text-lg font-bold text-white mb-2">Hotová dokumentace a 3D prohlížečka</h3>
+                        <p class="text-sm text-slate-300 leading-relaxed">
+                            Předáme vám hotové výkresy a modely v požadovaných formátech. Navíc získáte přístup do webové prohlížečky pro snadnou virtuální prohlídku a měření přímo v prohlížeči.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 2: VYUŽITÍ A SLUŽBY -->
+        <section id="sluzby" class="scroll-mt-28">
+            <div class="text-center max-w-2xl mx-auto mb-10">
+                <span class="font-mono text-xs uppercase tracking-widest text-[#F5B82E] block mb-2">Naše specializace</span>
+                <h2 class="text-2xl sm:text-3xl font-bold text-white mb-3">Co nejčastěji skenujeme a dokumentujeme</h2>
+                <p class="text-slate-400 text-sm sm:text-base">
+                    Dodáváme precizní podklady pro architekty, projektanty, stavební firmy, správce budov i památkáře.
+                </p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="glass-panel glass-panel-hover rounded-3xl p-6 sm:p-7 flex flex-col justify-between">
+                    <div>
+                        <div class="w-12 h-12 rounded-2xl bg-[#F5B82E]/10 border border-[#F5B82E]/30 flex items-center justify-center text-[#F5B82E] mb-5">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+                        </div>
+                        <h3 class="text-xl font-bold text-white mb-2">Pasportizace budov a rekonstrukce</h3>
+                        <p class="text-sm text-slate-300 leading-relaxed mb-4">
+                            Chybí vám původní dokumentace ke stavbě nebo neodpovídá skutečnosti? Vytvoříme milimetrově přesný pasport půdorysů, řezů, pohledů a krovů pro bezproblémový projekt rekonstrukce.
+                        </p>
+                    </div>
+                    <ul class="space-y-1.5 font-mono text-xs text-slate-400 border-t border-white/10 pt-4">
+                        <li class="flex items-center gap-2"><span class="text-[#F5B82E]">▸</span> Zaměření složitých dřevěných a ocelových krovů</li>
+                        <li class="flex items-center gap-2"><span class="text-[#F5B82E]">▸</span> Přesné výměry podlahových ploch (Facility Management)</li>
+                        <li class="flex items-center gap-2"><span class="text-[#F5B82E]">▸</span> Dokumentace skutečného provedení stavby</li>
+                    </ul>
+                </div>
+
+                <div class="glass-panel glass-panel-hover rounded-3xl p-6 sm:p-7 flex flex-col justify-between">
+                    <div>
+                        <div class="w-12 h-12 rounded-2xl bg-[#F5B82E]/10 border border-[#F5B82E]/30 flex items-center justify-center text-[#F5B82E] mb-5">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                        </div>
+                        <h3 class="text-xl font-bold text-white mb-2">Průmyslové haly a technologické celky</h3>
+                        <p class="text-sm text-slate-300 leading-relaxed mb-4">
+                            Kompletní 3D digitalizace výrobních hal, jeřábových drah, potrubních mostů a strojoven za plného provozu. Ideální podklad pro vestavbu technologií a kolizní kontroly (Clash Detection).
+                        </p>
+                    </div>
+                    <ul class="space-y-1.5 font-mono text-xs text-slate-400 border-t border-white/10 pt-4">
+                        <li class="flex items-center gap-2"><span class="text-[#F5B82E]">▸</span> Modelování TZB, vzduchotechniky a ocelových vazníků</li>
+                        <li class="flex items-center gap-2"><span class="text-[#F5B82E]">▸</span> Ověření průjezdních a montážních profilů</li>
+                        <li class="flex items-center gap-2"><span class="text-[#F5B82E]">▸</span> Nulové odstávky výroby při měření</li>
+                    </ul>
+                </div>
+
+                <div class="glass-panel glass-panel-hover rounded-3xl p-6 sm:p-7 flex flex-col justify-between">
+                    <div>
+                        <div class="w-12 h-12 rounded-2xl bg-[#F5B82E]/10 border border-[#F5B82E]/30 flex items-center justify-center text-[#F5B82E] mb-5">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        </div>
+                        <h3 class="text-xl font-bold text-white mb-2">Historické památky, kostely a klenby</h3>
+                        <p class="text-sm text-slate-300 leading-relaxed mb-4">
+                            Bezkontaktní a naprosto šetrné zaměření památkově chráněných objektů, zámků, historických fasád, křížových kleneb a opěrných systémů včetně analýzy deformací.
+                        </p>
+                    </div>
+                    <ul class="space-y-1.5 font-mono text-xs text-slate-400 border-t border-white/10 pt-4">
+                        <li class="flex items-center gap-2"><span class="text-[#F5B82E]">▸</span> Měřické ortofoto plány fasád ve vysokém rozlišení</li>
+                        <li class="flex items-center gap-2"><span class="text-[#F5B82E]">▸</span> Detailní vrstevnice a analýza sedání kleneb</li>
+                        <li class="flex items-center gap-2"><span class="text-[#F5B82E]">▸</span> Podklady pro památkovou péči a restaurátory</li>
+                    </ul>
+                </div>
+
+                <div class="glass-panel glass-panel-hover rounded-3xl p-6 sm:p-7 flex flex-col justify-between">
+                    <div>
+                        <div class="w-12 h-12 rounded-2xl bg-[#F5B82E]/10 border border-[#F5B82E]/30 flex items-center justify-center text-[#F5B82E] mb-5">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+                        </div>
+                        <h3 class="text-xl font-bold text-white mb-2">Mostní konstrukce a monolitické skelety</h3>
+                        <p class="text-sm text-slate-300 leading-relaxed mb-4">
+                            Geodetická kontrola mostních objektů, pilířů a vícepodlažních železobetonových skeletů. Porovnání skutečného provedení stavby s projektovou dokumentací.
+                        </p>
+                    </div>
+                    <ul class="space-y-1.5 font-mono text-xs text-slate-400 border-t border-white/10 pt-4">
+                        <li class="flex items-center gap-2"><span class="text-[#F5B82E]">▸</span> Kontrola rovinatosti podlah a průhybů stropních desek</li>
+                        <li class="flex items-center gap-2"><span class="text-[#F5B82E]">▸</span> Monitoring geometrie mostních oblouků a nosníků</li>
+                        <li class="flex items-center gap-2"><span class="text-[#F5B82E]">▸</span> Protokoly odchylek dle platných norem ČSN</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 3: TECHNICKÉ VÝSTUPY A FORMÁTY -->
+        <section id="vystupy" class="scroll-mt-28">
+            <div class="glass-panel rounded-3xl p-6 sm:p-10">
+                <div class="mb-8">
+                    <span class="font-mono text-xs uppercase tracking-widest text-[#F5B82E] block mb-2">Formáty a kompatibilita</span>
+                    <h2 class="text-2xl sm:text-3xl font-bold text-white">Výstupy připravené přímo pro váš projekční software</h2>
+                </div>
+
+                <div class="grid grid-cols-2 sm:grid-cols-3 gap-4 mb-8">
+                    <div class="p-4 rounded-2xl bg-white/[0.03] border border-white/10">
+                        <div class="font-mono text-lg font-bold text-[#F5B82E] mb-1">.RVT / .IFC / .PLN</div>
+                        <div class="text-xs font-semibold text-white mb-1">3D BIM Model (LOD 200–400)</div>
+                        <p class="text-xs text-slate-400">Plně parametrický 3D model pro Revit, ArchiCAD či Allplan včetně definovaných konstrukcí.</p>
+                    </div>
+                    <div class="p-4 rounded-2xl bg-white/[0.03] border border-white/10">
+                        <div class="font-mono text-lg font-bold text-white mb-1">.DWG / .DXF / .PDF</div>
+                        <div class="text-xs font-semibold text-slate-200 mb-1">2D Výkresová dokumentace</div>
+                        <p class="text-xs text-slate-400">Klasické půdorysy, svislé řezy, uliční pohledy a výkresy krovů s kótami a výškopisem.</p>
+                    </div>
+                    <div class="p-4 rounded-2xl bg-white/[0.03] border border-white/10">
+                        <div class="font-mono text-lg font-bold text-white mb-1">.RCP / .RCS</div>
+                        <div class="text-xs font-semibold text-slate-200 mb-1">Autodesk ReCap projekt</div>
+                        <p class="text-xs text-slate-400">Přímé připojení mračna bodů do AutoCADu, Revitu, Civil 3D nebo Inventoru.</p>
+                    </div>
+                    <div class="p-4 rounded-2xl bg-white/[0.03] border border-white/10">
+                        <div class="font-mono text-lg font-bold text-white mb-1">.E57 / .LAS / .LAZ</div>
+                        <div class="text-xs font-semibold text-slate-200 mb-1">Univerzální mračno bodů</div>
+                        <p class="text-xs text-slate-400">Otevřené standardní formáty kompatibilní se všemi CAD, BIM a geodetickými programy.</p>
+                    </div>
+                    <div class="p-4 rounded-2xl bg-white/[0.03] border border-white/10">
+                        <div class="font-mono text-lg font-bold text-white mb-1">TruView / WebCloud</div>
+                        <div class="text-xs font-semibold text-slate-200 mb-1">3D Prohlížečka v prohlížeči</div>
+                        <p class="text-xs text-slate-400">Sdílejte naskenovanou stavbu s investorem pomocí odkazu. Měření délek a ploch online.</p>
+                    </div>
+                    <div class="p-4 rounded-2xl bg-white/[0.03] border border-white/10">
+                        <div class="font-mono text-lg font-bold text-white mb-1">GeoTIFF / Ortofoto</div>
+                        <div class="text-xs font-semibold text-slate-200 mb-1">Měřické ortofoto plány</div>
+                        <p class="text-xs text-slate-400">Kolmé, nezkreslené snímky fasád, kleneb a podlah v milimetrovém měřítku.</p>
+                    </div>
+                </div>
+
+                <div class="rounded-2xl bg-white/[0.03] border border-white/10 p-5 flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div class="space-y-1">
+                        <div class="text-sm font-bold text-white flex items-center gap-2">
+                            <span class="w-2 h-2 rounded-full bg-[#F5B82E]"></span>
+                            Potřebujete specifický formát nebo vlastní šablonu projektu?
+                        </div>
+                        <p class="text-xs text-slate-300 max-w-xl">
+                            Výstupy vždy přizpůsobujeme vašim projekčním standardům, hladinám a požadované úrovni detailu (LOD).
+                        </p>
+                    </div>
+                    <a href="#kontakt" class="shrink-0 px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-mono text-xs font-semibold transition-all">
+                        Konzultovat projekt →
+                    </a>
+                </div>
+            </div>
+        </section>
+
+        <!-- SECTION 4: INTERAKTIVNÍ KALKULACE & POPTÁVKOVÝ FORMULÁŘ -->
+        <section id="kontakt" class="scroll-mt-28">
+            <div class="glass-panel rounded-3xl p-6 sm:p-10 border border-white/15">
+                <div class="mb-8">
+                    <span class="font-mono text-xs uppercase tracking-widest text-[#F5B82E] block mb-2">Kalkulace & Kontakt</span>
+                    <h2 class="text-2xl sm:text-3xl font-bold text-white mb-2">Spočítejte si orientační časovou náročnost</h2>
+                    <p class="text-sm text-slate-400">
+                        Vyberte typ objektu a přibližný rozsah. Obratem vám připravíme přesnou cenovou nabídku a termín zaměření.
+                    </p>
+                </div>
+
+                <div class="p-5 rounded-2xl bg-black/50 border border-white/10 mb-8 space-y-5">
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <button type="button" data-btype="Rodinný / Bytový dům" data-btime="3–5 hodin" class="calc-type-btn active p-3.5 rounded-xl border border-[#F5B82E] bg-[#F5B82E]/15 text-left transition-all">
+                            <div class="font-mono text-[10px] text-[#F5B82E] uppercase">Kategorie A</div>
+                            <div class="font-bold text-sm text-white mt-0.5">Rodinný / Bytový dům</div>
+                        </button>
+                        <button type="button" data-btype="Průmyslová hala / Skelet" data-btime="1–2 dny" class="calc-type-btn p-3.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-left transition-all">
+                            <div class="font-mono text-[10px] text-slate-400 uppercase">Kategorie B</div>
+                            <div class="font-bold text-sm text-white mt-0.5">Průmyslová hala / Skelet</div>
+                        </button>
+                        <button type="button" data-btype="Památka / Mostní objekt" data-btime="1–3 dny" class="calc-type-btn p-3.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-left transition-all">
+                            <div class="font-mono text-[10px] text-slate-400 uppercase">Kategorie C</div>
+                            <div class="font-bold text-sm text-white mt-0.5">Památka / Mostní objekt</div>
+                        </button>
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between text-xs font-mono mb-2">
+                            <span class="text-slate-400">Odhadovaná podlahová plocha / rozsah objektu:</span>
+                            <span id="area-display" class="text-[#F5B82E] font-bold">850 m²</span>
+                        </div>
+                        <input id="area-slider" type="range" min="100" max="15000" step="50" value="850" class="lidar-slider">
+                    </div>
+
+                    <div class="grid grid-cols-3 gap-3 pt-2 border-t border-white/10 text-center">
+                        <div>
+                            <div class="text-[11px] text-slate-400">Počet skenovacích stanovisek</div>
+                            <div id="est-stations" class="font-mono text-base sm:text-lg font-bold text-white mt-0.5">~ 45 skenů</div>
+                        </div>
+                        <div>
+                            <div class="text-[11px] text-slate-400">Doba měření v terénu</div>
+                            <div id="est-time" class="font-mono text-base sm:text-lg font-bold text-[#F5B82E] mt-0.5">3–5 hodin</div>
+                        </div>
+                        <div>
+                            <div class="text-[11px] text-slate-400">Předání zpracovaných dat</div>
+                            <div id="est-points" class="font-mono text-base sm:text-lg font-bold text-slate-200 mt-0.5">do 5–10 dnů</div>
+                        </div>
+                    </div>
+                </div>
+
+                <form id="inquiry-form" class="space-y-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-mono text-slate-300 mb-1.5">Jméno a příjmení / Firma *</label>
+                            <input type="text" required placeholder="Ing. Jan Novák — Atelier BIM" class="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/15 text-white text-sm focus:outline-none focus:border-[#F5B82E] transition-colors">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-mono text-slate-300 mb-1.5">E-mail nebo telefon *</label>
+                            <input type="text" required placeholder="novak@atelier.cz / +420 777 123 456" class="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/15 text-white text-sm focus:outline-none focus:border-[#F5B82E] transition-colors">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-xs font-mono text-slate-300 mb-1.5">Lokalita stavby</label>
+                            <input type="text" placeholder="např. Praha, Brno, Ostrava..." class="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/15 text-white text-sm focus:outline-none focus:border-[#F5B82E] transition-colors">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-mono text-slate-300 mb-1.5">Požadovaný výstup</label>
+                            <select class="w-full px-4 py-3 rounded-xl bg-[#0c0e12] border border-white/15 text-white text-sm focus:outline-none focus:border-[#F5B82E] transition-colors">
+                                <option>Mračno bodů (E57 / RCP) + 3D BIM Model (Revit / ArchiCAD)</option>
+                                <option>Kompletní 2D pasport stavby (DWG / PDF)</option>
+                                <option>Zaregistrované mračno bodů + Web prohlížečka</option>
+                                <option>Kontrola rovinatosti a deformací</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-xs font-mono text-slate-300 mb-1.5">Upřesnění projektu</label>
+                        <textarea rows="3" id="form-notes" placeholder="Popište krátce objekt, účel zaměření nebo požadovaný termín..." class="w-full px-4 py-3 rounded-xl bg-white/[0.04] border border-white/15 text-white text-sm focus:outline-none focus:border-[#F5B82E] transition-colors"></textarea>
+                    </div>
+
+                    <div class="flex flex-col sm:flex-row items-center justify-between gap-4 pt-2">
+                        <div class="text-xs text-slate-400 font-mono">
+                            Odpovídáme do 24 hodin • Působíme po celé ČR a SK
+                        </div>
+                        <button type="submit" class="w-full sm:w-auto px-8 py-4 rounded-xl bg-[#F5B82E] text-slate-950 font-bold text-sm hover:bg-[#ffc947] transition-all shadow-lg shadow-[#F5B82E]/20">
+                            Odeslat nezávaznou poptávku
+                        </button>
+                    </div>
+                </form>
+
+                <div id="form-success-msg" class="hidden mt-6 p-4 rounded-2xl bg-[#F5B82E]/15 border border-[#F5B82E]/40 text-white text-sm flex items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <span class="w-2.5 h-2.5 rounded-full bg-[#F5B82E] animate-ping"></span>
+                        <span><strong>Poptávka byla úspěšně odeslána!</strong> Ozveme se vám s návrhem řešení do 24 hodin.</span>
+                    </div>
+                    <button id="close-success-btn" class="text-xs font-mono underline ml-4">Zavřít</button>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <footer class="relative z-10 border-t border-white/10 bg-[#040507]/90 backdrop-blur-md py-10">
+        <div class="max-w-[900px] mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-6 text-xs text-slate-400">
+            <a href="#hero" class="flex items-center gap-3 group">
+                <svg class="w-9 h-9 shrink-0" viewBox="0 0 130 135" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <polygon points="73,10 112,35 112,124 73,124" fill="#D5D7DC"/>
+                    <polygon points="45,33 73,10 73,95 45,72" stroke="#FFFFFF" stroke-width="4.5" stroke-linejoin="round" fill="none"/>
+                    <line x1="45" y1="45" x2="73" y2="22" stroke="#FFFFFF" stroke-width="4"/>
+                    <line x1="45" y1="57" x2="73" y2="34" stroke="#FFFFFF" stroke-width="4"/>
+                    <line x1="45" y1="69" x2="73" y2="46" stroke="#FFFFFF" stroke-width="4"/>
+                    <line x1="52" y1="77" x2="73" y2="59" stroke="#FFFFFF" stroke-width="4"/>
+                    <line x1="61" y1="85" x2="73" y2="74" stroke="#FFFFFF" stroke-width="4"/>
+                    <path fill="#F4F5F7" fill-rule="evenodd" d="M 28,53 L 64,82 L 64,124 L 28,124 L 28,113 L 35,113 L 35,104 L 28,104 L 28,89 L 34,89 L 34,81 L 28,81 L 28,72 L 33,72 L 33,64 L 28,64 Z M 36,80 L 45,80 L 45,89 L 36,89 Z"/>
+                    <rect x="20" y="45" width="7.5" height="7.5" fill="#D5D7DC"/>
+                    <rect x="11" y="54" width="7.5" height="7.5" fill="#E2E4E8"/>
+                    <rect x="2"  y="61" width="7.5" height="7.5" fill="#D5D7DC"/>
+                    <rect x="19" y="62" width="7.5" height="7.5" fill="#FFFFFF"/>
+                    <rect x="11" y="70" width="7.5" height="7.5" fill="#D5D7DC"/>
+                    <rect x="19" y="75" width="7.5" height="7.5" fill="#E2E4E8"/>
+                    <rect x="6"  y="81" width="7.5" height="7.5" fill="#FFFFFF"/>
+                    <rect x="13" y="88" width="7.5" height="7.5" fill="#D5D7DC"/>
+                    <rect x="20" y="95" width="7.5" height="7.5" fill="#FFFFFF"/>
+                    <rect x="2"  y="101" width="7.5" height="7.5" fill="#E2E4E8"/>
+                    <rect x="12" y="102" width="7.5" height="7.5" fill="#FFFFFF"/>
+                    <rect x="19" y="110" width="7.5" height="7.5" fill="#D5D7DC"/>
+                    <rect x="11" y="117" width="7.5" height="7.5" fill="#E2E4E8"/>
+                    <rect x="21" y="122" width="7.5" height="7.5" fill="#FFFFFF"/>
+                </svg>
+                <div class="font-logo uppercase font-bold tracking-tight leading-[0.92]">
+                    <div class="text-white text-xs">SKENUJEME</div>
+                    <div class="text-white text-xs">STAVBY</div>
+                    <div class="text-[#F5B82E] text-xs">.CZ</div>
+                </div>
+            </a>
+
+            <div class="font-mono text-[11px] flex items-center gap-6">
+                <a href="#hero" class="hover:text-white transition-colors">↑ Nahoru na úvod</a>
+                <span class="text-slate-300">info@skenujemestavby.cz</span>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        window.addEventListener('DOMContentLoaded', function () {
+            const canvas = document.getElementById('lidar-canvas');
+            if (!canvas || typeof THREE === 'undefined') return;
+
+            const renderer = new THREE.WebGLRenderer({
+                canvas: canvas,
+                antialias: true,
+                alpha: true,
+                powerPreference: 'high-performance'
+            });
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+            renderer.setSize(window.innerWidth, window.innerHeight);
+
+            const scene = new THREE.Scene();
+
+            const camera = new THREE.PerspectiveCamera(44, window.innerWidth / window.innerHeight, 0.1, 200);
+            camera.position.set(0, 1.35, 22.5);
+
+            const POINT_COUNT = 40000;
+            const NUM_MODELS = 5;
+            const modelPositions = [];
+            const modelIntensities = [];
+
+            // Model 0: Rodinný / Bytový dům se sedlovou střechou a garáží
+            function generateModel0() {
+                const pos = new Float32Array(POINT_COUNT * 3);
+                const intensity = new Float32Array(POINT_COUNT);
+                for (let i = 0; i < POINT_COUNT; i++) {
+                    const i3 = i * 3;
+                    const r = Math.random();
+                    if (r < 0.34) {
+                        const face = Math.floor(Math.random() * 4);
+                        let x = 0, y = -2.2 + Math.random() * 2.8, z = 0;
+                        if (face < 2) {
+                            x = (Math.random() - 0.5) * 5.2;
+                            z = face === 0 ? 2.1 : -2.1;
+                        } else {
+                            z = (Math.random() - 0.5) * 4.2;
+                            x = face === 2 ? 2.6 : -2.6;
+                        }
+                        const inWinY = (y > -1.6 && y < -0.9) || (y > -0.4 && y < 0.3);
+                        const inWinX = Math.abs(Math.abs(x) - 1.3) < 0.45 || Math.abs(x) < 0.4;
+                        let refl = 0.52 + (Math.random() - 0.5) * 0.15;
+                        if (inWinY && inWinX) refl = 0.18;
+                        if (Math.abs(Math.abs(x) - 2.6) < 0.08 || Math.abs(Math.abs(z) - 2.1) < 0.08) refl = 0.92;
+                        pos[i3] = x; pos[i3 + 1] = y; pos[i3 + 2] = z;
+                        intensity[i] = refl;
+                    } else if (r < 0.64) {
+                        const u = (Math.random() - 0.5) * 5.6;
+                        const side = Math.random() < 0.5 ? -1 : 1;
+                        const slope = Math.random();
+                        const z = side * slope * 2.35;
+                        const y = 0.6 + (1.0 - slope) * 1.95;
+                        const isRafter = Math.abs((u * 3.5) % 1.0) < 0.12 || slope < 0.05 || slope > 0.95;
+                        pos[i3] = u; pos[i3 + 1] = y; pos[i3 + 2] = z;
+                        intensity[i] = isRafter ? 0.94 : 0.62 + (Math.random() - 0.5) * 0.12;
+                    } else if (r < 0.84) {
+                        if (Math.random() < 0.82) {
+                            const x = 2.6 + Math.random() * 2.2;
+                            const z = (Math.random() - 0.5) * 3.4;
+                            const y = Math.random() < 0.45 ? -0.35 : -2.2 + Math.random() * 1.85;
+                            const isEdge = x > 4.65 || Math.abs(z) > 1.58 || Math.abs(y + 0.35) < 0.06;
+                            pos[i3] = x; pos[i3 + 1] = y; pos[i3 + 2] = z;
+                            intensity[i] = isEdge ? 0.90 : 0.48;
+                        } else {
+                            pos[i3] = -1.2 + (Math.random() - 0.5) * 0.45;
+                            pos[i3 + 1] = 1.6 + Math.random() * 1.35;
+                            pos[i3 + 2] = 0.6 + (Math.random() - 0.5) * 0.45;
+                            intensity[i] = 0.92;
+                        }
+                    } else {
+                        const ang = Math.random() * Math.PI * 2;
+                        const rad = 2.4 + Math.random() * 4.2;
+                        pos[i3] = Math.cos(ang) * rad;
+                        pos[i3 + 1] = -2.22 + (Math.random() - 0.5) * 0.03;
+                        pos[i3 + 2] = Math.sin(ang) * rad;
+                        intensity[i] = Math.abs(rad % 0.85) < 0.06 ? 0.42 : 0.16;
+                    }
+                }
+                return { pos, intensity };
+            }
+
+            // Model 1: Průmyslová hala s příhradovými vazníky a jeřábovou dráhou
+            function generateModel1() {
+                const pos = new Float32Array(POINT_COUNT * 3);
+                const intensity = new Float32Array(POINT_COUNT);
+                for (let i = 0; i < POINT_COUNT; i++) {
+                    const i3 = i * 3;
+                    const r = Math.random();
+                    if (r < 0.35) {
+                        const bay = Math.floor(Math.random() * 7) - 3;
+                        const side = Math.random() < 0.5 ? -1 : 1;
+                        if (Math.random() < 0.55) {
+                            pos[i3] = bay * 1.35 + (Math.random() - 0.5) * 0.12;
+                            pos[i3 + 1] = -2.2 + Math.random() * 3.3;
+                            pos[i3 + 2] = side * 2.65 + (Math.random() - 0.5) * 0.12;
+                            intensity[i] = 0.95;
+                        } else {
+                            pos[i3] = (Math.random() - 0.5) * 8.2;
+                            pos[i3 + 1] = -2.2 + Math.random() * 3.2;
+                            pos[i3 + 2] = side * 2.65;
+                            intensity[i] = 0.45 + 0.15 * Math.sin(pos[i3] * 12.0);
+                        }
+                    } else if (r < 0.72) {
+                        const bay = Math.floor(Math.random() * 7) - 3;
+                        const z = (Math.random() - 0.5) * 5.3;
+                        const pitch = 1.0 - Math.abs(z) / 2.65;
+                        const topY = 1.1 + pitch * 1.15;
+                        const botY = 0.85;
+                        const chord = Math.random();
+                        let x = bay * 1.35 + (Math.random() - 0.5) * 0.08;
+                        let y = chord < 0.45 ? topY : (chord < 0.8 ? botY : botY + Math.random() * (topY - botY));
+                        if (Math.random() < 0.35) {
+                            x = (Math.random() - 0.5) * 8.2;
+                            y = topY + (Math.abs(z) < 0.65 ? 0.35 : 0.0);
+                        }
+                        pos[i3] = x; pos[i3 + 1] = y; pos[i3 + 2] = z;
+                        intensity[i] = 0.88 + Math.random() * 0.12;
+                    } else {
+                        if (Math.random() < 0.35) {
+                            const t = Math.random();
+                            pos[i3] = -1.2 + t * 2.4;
+                            pos[i3 + 1] = 0.45;
+                            pos[i3 + 2] = -2.55 + t * 5.1;
+                            intensity[i] = 0.96;
+                        } else {
+                            pos[i3] = (Math.random() - 0.5) * 9.0;
+                            pos[i3 + 1] = -2.22;
+                            pos[i3 + 2] = (Math.random() - 0.5) * 6.2;
+                            intensity[i] = 0.20;
+                        }
+                    }
+                }
+                return { pos, intensity };
+            }
+
+            // Model 2: Historická památka (Kostel s věží, hlavní lodí, opěrnými pilíři a presbytářem)
+            function generateModel2() {
+                const pos = new Float32Array(POINT_COUNT * 3);
+                const intensity = new Float32Array(POINT_COUNT);
+                for (let i = 0; i < POINT_COUNT; i++) {
+                    const i3 = i * 3;
+                    const r = Math.random();
+                    if (r < 0.34) {
+                        const h = Math.random();
+                        if (h < 0.60) {
+                            const face = Math.floor(Math.random() * 4);
+                            let x = 0, z = 0;
+                            const y = -2.2 + (h / 0.60) * 3.6;
+                            if (face < 2) {
+                                x = -2.0 + (Math.random() - 0.5) * 1.4;
+                                z = face === 0 ? 0.75 : -0.75;
+                            } else {
+                                z = (Math.random() - 0.5) * 1.5;
+                                x = face === 2 ? -1.3 : -2.7;
+                            }
+                            const isCorner = (Math.abs(Math.abs(z) - 0.75) < 0.08 && (Math.abs(x + 1.3) < 0.08 || Math.abs(x + 2.7) < 0.08));
+                            pos[i3] = x; pos[i3 + 1] = y; pos[i3 + 2] = z;
+                            intensity[i] = isCorner ? 0.95 : 0.68;
+                        } else {
+                            const sh = (h - 0.60) / 0.40;
+                            const halfW = (1.0 - sh) * 0.75;
+                            const face = Math.floor(Math.random() * 4);
+                            let dx = 0, dz = 0;
+                            if (face < 2) {
+                                dx = (Math.random() * 2.0 - 1.0) * halfW;
+                                dz = face === 0 ? halfW : -halfW;
+                            } else {
+                                dz = (Math.random() * 2.0 - 1.0) * halfW;
+                                dx = face === 2 ? halfW : -halfW;
+                            }
+                            const isHipEdge = Math.abs(Math.abs(dx) - halfW) < 0.06 && Math.abs(Math.abs(dz) - halfW) < 0.06;
+                            pos[i3] = -2.0 + dx; pos[i3 + 1] = 1.4 + sh * 2.45; pos[i3 + 2] = dz;
+                            intensity[i] = isHipEdge ? 0.96 : 0.80;
+                        }
+                    } else if (r < 0.78) {
+                        const x = -1.3 + Math.random() * 4.4;
+                        const side = Math.random() < 0.5 ? -1 : 1;
+                        if (Math.random() < 0.52) {
+                            const y = -2.2 + Math.random() * 2.6;
+                            const isButtress = Math.abs(((x + 1.3) * 1.15) % 1.0) < 0.14;
+                            const z = side * (isButtress ? 1.65 + Math.random() * 0.28 : 1.55);
+                            pos[i3] = x; pos[i3 + 1] = y; pos[i3 + 2] = z;
+                            intensity[i] = isButtress ? 0.92 : 0.50;
+                        } else {
+                            const slope = Math.random();
+                            const z = side * (1.0 - slope) * 1.58;
+                            const y = 0.4 + slope * 1.75;
+                            const isTruss = Math.abs(((x + 1.3) * 1.15) % 1.0) < 0.12 || slope > 0.93 || slope < 0.06;
+                            pos[i3] = x; pos[i3 + 1] = y; pos[i3 + 2] = z;
+                            intensity[i] = isTruss ? 0.94 : 0.62;
+                        }
+                    } else {
+                        if (Math.random() < 0.65) {
+                            const t = Math.random();
+                            const x = 3.1 + t * 1.15;
+                            const halfZ = (1.0 - t * 0.55) * 1.25;
+                            const side = Math.random() < 0.5 ? -1 : 1;
+                            const y = -2.2 + Math.random() * 2.4;
+                            pos[i3] = x; pos[i3 + 1] = y; pos[i3 + 2] = side * halfZ;
+                            intensity[i] = (y > 0.05 || t > 0.88) ? 0.90 : 0.56;
+                        } else {
+                            pos[i3] = (Math.random() - 0.5) * 8.4;
+                            pos[i3 + 1] = -2.22;
+                            pos[i3 + 2] = (Math.random() - 0.5) * 5.4;
+                            intensity[i] = 0.18;
+                        }
+                    }
+                }
+                return { pos, intensity };
+            }
+
+            // Model 3: Realistický dálniční viadukt / mostní konstrukce (masivní pilíře, nosníky, mostovka a svodidla)
+            function generateModel3() {
+                const pos = new Float32Array(POINT_COUNT * 3);
+                const intensity = new Float32Array(POINT_COUNT);
+                for (let i = 0; i < POINT_COUNT; i++) {
+                    const i3 = i * 3;
+                    const r = Math.random();
+                    const x = (Math.random() - 0.5) * 9.5;
+                    
+                    if (r < 0.42) {
+                        // Masivní mostovka (deska a boční římsy)
+                        const z = (Math.random() - 0.5) * 3.2;
+                        const y = 1.1 + (Math.random() - 0.5) * 0.15;
+                        const isCurbOrBarrier = Math.abs(Math.abs(z) - 1.5) < 0.18 || Math.abs(z) < 0.05;
+                        pos[i3] = x; pos[i3 + 1] = y; pos[i3 + 2] = z;
+                        intensity[i] = isCurbOrBarrier ? 0.94 : 0.62;
+                    } else if (r < 0.74) {
+                        // Hlavní spodní podélné nosníky (T-profil / komorový nosník)
+                        const side = Math.random() < 0.5 ? -1 : 1;
+                        const z = side * 1.1 + (Math.random() - 0.5) * 0.25;
+                        const y = 0.65 + Math.random() * 0.35;
+                        pos[i3] = x; pos[i3 + 1] = y; pos[i3 + 2] = z;
+                        intensity[i] = 0.78;
+                    } else {
+                        // Masivní betonové pilíře (podpěry ve 3 polích)
+                        const pierX = (Math.floor(Math.random() * 3) - 1) * 3.2;
+                        const pz = (Math.random() - 0.5) * 1.6;
+                        const py = -2.2 + Math.random() * 2.8;
+                        const isPierEdge = Math.abs(Math.abs(pz) - 0.8) < 0.1 || Math.abs(Math.abs(pos[i3] - pierX) - 0.8) < 0.1;
+                        pos[i3] = pierX + (Math.random() - 0.5) * 1.4;
+                        pos[i3 + 1] = py;
+                        pos[i3 + 2] = pz;
+                        intensity[i] = isPierEdge ? 0.88 : 0.45;
+                    }
+                }
+                return { pos, intensity };
+            }
+
+            // Model 4: Terénní reliéf a vrstevnicový sken svahu (geodetický TIN model / mračno terénu)
+            function generateModel4() {
+                const pos = new Float32Array(POINT_COUNT * 3);
+                const intensity = new Float32Array(POINT_COUNT);
+                for (let i = 0; i < POINT_COUNT; i++) {
+                    const i3 = i * 3;
+                    const x = (Math.random() - 0.5) * 9.8;
+                    const z = (Math.random() - 0.5) * 6.5;
+                    
+                    // Procedurální vlnitý terén s údolím a vyvýšeninou (Gaussian hills + ridges)
+                    const h1 = Math.sin(x * 0.5) * Math.cos(z * 0.4) * 1.2;
+                    const h2 = Math.sin(x * 1.2 + z * 0.9) * 0.4;
+                    const terrainY = -0.8 + h1 + h2 - 0.05 * (x * x * 0.05);
+
+                    const isContourLine = Math.abs(terrainY % 0.4) < 0.04; // Vrstevnice laserového skenu
+                    const isBoundaryGrid = Math.abs(x) > 4.6 || Math.abs(z) > 3.0;
+
+                    pos[i3] = x;
+                    pos[i3 + 1] = terrainY;
+                    pos[i3 + 2] = z;
+
+                    intensity[i] = isBoundaryGrid ? 0.95 : (isContourLine ? 0.88 : 0.35 + (terrainY + 1.5) * 0.2);
+                }
+                return { pos, intensity };
+            }
+
+            const generators = [generateModel0, generateModel1, generateModel2, generateModel3, generateModel4];
+            for (let m = 0; m < NUM_MODELS; m++) {
+                const data = generators[m]();
+                modelPositions.push(data.pos);
+                modelIntensities.push(data.intensity);
+            }
+
+            const geometry = new THREE.BufferGeometry();
+
+            const posABuffer = new THREE.BufferAttribute(new Float32Array(modelPositions[0]), 3);
+            const intABuffer = new THREE.BufferAttribute(new Float32Array(modelIntensities[0]), 1);
+            const posBBuffer = new THREE.BufferAttribute(new Float32Array(modelPositions[1]), 3);
+            const intBBuffer = new THREE.BufferAttribute(new Float32Array(modelIntensities[1]), 1);
+
+            const explodeDirs = new Float32Array(POINT_COUNT * 3);
+            const sidePositions = new Float32Array(POINT_COUNT * 3);
+            const phases = new Float32Array(POINT_COUNT);
+
+            for (let i = 0; i < POINT_COUNT; i++) {
+                const i3 = i * 3;
+
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos(2.0 * Math.random() - 1.0);
+                const speed = 4.5 + Math.random() * 9.5;
+                explodeDirs[i3]     = Math.sin(phi) * Math.cos(theta) * speed;
+                explodeDirs[i3 + 1] = Math.sin(phi) * Math.sin(theta) * speed;
+                explodeDirs[i3 + 2] = Math.cos(phi) * speed;
+
+                const sideSign = (i % 2 === 0) ? -1.0 : 1.0;
+                const marginDepth = 1.04 + Math.pow(Math.random(), 0.75) * 0.85;
+                sidePositions[i3]     = sideSign * marginDepth;
+                sidePositions[i3 + 1] = (Math.random() - 0.5) * 24.0;
+                sidePositions[i3 + 2] = (Math.random() - 0.5) * 5.0 - 1.0;
+
+                phases[i] = Math.random();
+            }
+
+            geometry.setAttribute('position', posABuffer);
+            geometry.setAttribute('aIntA', intABuffer);
+            geometry.setAttribute('aPosB', posBBuffer);
+            geometry.setAttribute('aIntB', intBBuffer);
+            geometry.setAttribute('aExplodeDir', new THREE.BufferAttribute(explodeDirs, 3));
+            geometry.setAttribute('aSidePos', new THREE.BufferAttribute(sidePositions, 3));
+            geometry.setAttribute('aPhase', new THREE.BufferAttribute(phases, 1));
+
+            const vertexShader = `
+                uniform float uTime;
+                uniform float uScroll;
+                uniform float uPageScrollY;
+                uniform float uPointSize;
+                uniform float uPixelRatio;
+                uniform float uPulseRadius;
+                uniform vec2 uMouse3D;
+                uniform float uSideClearHalfWidth;
+                uniform float uHeroXOffset;
+
+                attribute float aIntA;
+                attribute vec3 aPosB;
+                attribute float aIntB;
+                attribute vec3 aExplodeDir;
+                attribute vec3 aSidePos;
+                attribute float aPhase;
+
+                varying vec3 vColor;
+                varying float vAlpha;
+                varying float vTwinkle;
+
+                mat2 rot2D(float a) {
+                    float s = sin(a);
+                    float c = cos(a);
+                    return mat2(c, -s, s, c);
+                }
+
+                // Standard LiDAR intensity color map (Blue -> Cyan -> Green -> Yellow -> Red)
+                vec3 getLiDARColor(float intensity) {
+                    float val = clamp(intensity, 0.0, 1.0);
+                    vec3 cBlue   = vec3(0.12, 0.35, 0.92);
+                    vec3 cCyan   = vec3(0.06, 0.82, 0.92);
+                    vec3 cGreen  = vec3(0.20, 0.88, 0.42);
+                    vec3 cYellow = vec3(0.98, 0.80, 0.15);
+                    vec3 cRed    = vec3(1.00, 0.32, 0.20);
+                    
+                    if (val < 0.25) return mix(cBlue, cCyan, val / 0.25);
+                    if (val < 0.52) return mix(cCyan, cGreen, (val - 0.25) / 0.27);
+                    if (val < 0.80) return mix(cGreen, cYellow, (val - 0.52) / 0.28);
+                    return mix(cYellow, cRed, (val - 0.80) / 0.20);
+                }
+
+                void main() {
+                    float distA = length(position);
+                    float morphFactor = smoothstep(distA - 1.35, distA + 1.35, uPulseRadius);
+
+                    vec3 morphedPos = mix(position, aPosB, morphFactor);
+                    float morphedInt = mix(aIntA, aIntB, morphFactor);
+
+                    float waveBand = smoothstep(1.25, 0.0, abs(distA - uPulseRadius)) * (1.0 - smoothstep(0.0, 0.45, uScroll));
+                    if (waveBand > 0.001) {
+                        vec3 radialDir = normalize(morphedPos + vec3(0.0001, 0.001, 0.0001));
+                        morphedPos += radialDir * waveBand * 0.25 * sin(aPhase * 3.0 + uTime * 8.0);
+                    }
+
+                    vec3 baseCol = getLiDARColor(morphedInt);
+                    vec3 pulseHighlight = vec3(1.0, 1.0, 1.0);
+                    baseCol = mix(baseCol, pulseHighlight, waveBand * 0.9);
+
+                    vec3 heroPos = morphedPos;
+                    float rotY = uTime * 0.18 + uMouse3D.x * 0.55;
+                    float rotX = 0.17 - uMouse3D.y * 0.30;
+
+                    heroPos.xz = rot2D(rotY) * heroPos.xz;
+                    heroPos.yz = rot2D(rotX) * heroPos.yz;
+
+                    heroPos.x += uHeroXOffset;
+                    heroPos.y -= 0.25;
+
+                    float explodeEnvelope = sin(clamp(uScroll * 1.25, 0.0, 1.0) * 3.14159265);
+                    float dockFactor = smoothstep(0.18, 0.92, uScroll);
+
+                    vec3 targetSidePos;
+                    targetSidePos.x = aSidePos.x * uSideClearHalfWidth + sin(uTime * 0.7 + aPhase) * 0.20;
+                    float wrappedY = mod(aSidePos.y + uPageScrollY * 0.0065 + uTime * 0.16 + 12.0, 24.0) - 12.0;
+                    targetSidePos.y = wrappedY;
+                    targetSidePos.z = aSidePos.z + cos(uTime * 0.6 + aPhase) * 0.32;
+
+                    vec3 explodedPos = heroPos + aExplodeDir * explodeEnvelope * (1.0 - dockFactor * 0.65);
+                    vec3 finalPos = mix(explodedPos, targetSidePos, dockFactor);
+
+                    float shimmer = 0.50 + 0.50 * sin(uTime * 3.2 + aPhase * 6.2831);
+                    vTwinkle = mix(1.0, shimmer, dockFactor);
+
+                    float intensityAlpha = 0.42 + 0.54 * clamp(morphedInt, 0.0, 1.0);
+                    vAlpha = mix(intensityAlpha, (0.16 + 0.38 * shimmer) * intensityAlpha, dockFactor);
+                    vAlpha = min(1.0, vAlpha + waveBand * 0.45);
+                    vColor = baseCol;
+
+                    vec4 mvPosition = modelViewMatrix * vec4(finalPos, 1.0);
+                    gl_Position = projectionMatrix * mvPosition;
+
+                    float edgeBoost = 0.85 + 0.35 * morphedInt + waveBand * 0.50;
+                    gl_PointSize = uPointSize * uPixelRatio * edgeBoost * (22.5 / -mvPosition.z);
+                }
+            `;
+
+            const fragmentShader = `
+                varying vec3 vColor;
+                varying float vAlpha;
+                varying float vTwinkle;
+
+                void main() {
+                    vec2 cxy = 2.0 * gl_PointCoord - 1.0;
+                    float r = dot(cxy, cxy);
+                    if (r > 1.0) discard;
+
+                    float core = smoothstep(1.0, 0.20, r);
+                    vec3 finalColor = vColor * (0.88 + 0.24 * vTwinkle);
+
+                    gl_FragColor = vec4(finalColor, core * vAlpha);
+                }
+            `;
+
+            const uniforms = {
+                uTime: { value: 0 },
+                uScroll: { value: 0 },
+                uPageScrollY: { value: 0 },
+                uPointSize: { value: 1.35 },
+                uPixelRatio: { value: Math.min(window.devicePixelRatio || 1, 2) },
+                uPulseRadius: { value: -2.5 },
+                uMouse3D: { value: new THREE.Vector2(0, 0) },
+                uSideClearHalfWidth: { value: 7.5 },
+                uHeroXOffset: { value: window.innerWidth >= 1024 ? 3.55 : 0.0 }
+            };
+
+            const material = new THREE.ShaderMaterial({
+                vertexShader: vertexShader,
+                fragmentShader: fragmentShader,
+                uniforms: uniforms,
+                transparent: true,
+                depthWrite: false,
+                blending: THREE.AdditiveBlending
+            });
+
+            const pointCloud = new THREE.Points(geometry, material);
+            scene.add(pointCloud);
+
+            let currentObjIndex = 0;
+            let nextObjIndex = 1;
+            let isMorphingPulse = false;
+            let pulseRadiusVal = -2.5;
+            let timeUntilNextPulse = 4.5;
+
+            function startPulseMorphTo(targetIndex) {
+                if (isMorphingPulse) {
+                    posABuffer.array.set(modelPositions[nextObjIndex]);
+                    intABuffer.array.set(modelIntensities[nextObjIndex]);
+                    posABuffer.needsUpdate = true;
+                    intABuffer.needsUpdate = true;
+                    currentObjIndex = nextObjIndex;
+                }
+
+                nextObjIndex = targetIndex % NUM_MODELS;
+                posBBuffer.array.set(modelPositions[nextObjIndex]);
+                intBBuffer.array.set(modelIntensities[nextObjIndex]);
+                posBBuffer.needsUpdate = true;
+                intBBuffer.needsUpdate = true;
+
+                pulseRadiusVal = -1.8;
+                uniforms.uPulseRadius.value = pulseRadiusVal;
+                isMorphingPulse = true;
+                timeUntilNextPulse = 4.5;
+            }
+
+            function updateCameraAndSideMargins() {
+                const w = window.innerWidth;
+                const h = window.innerHeight;
+                camera.aspect = w / h;
+                camera.updateProjectionMatrix();
+                renderer.setSize(w, h);
+                uniforms.uPixelRatio.value = Math.min(window.devicePixelRatio || 1, 2);
+
+                uniforms.uHeroXOffset.value = w >= 1024 ? 3.55 : 0.0;
+
+                const vFovRad = (camera.fov * Math.PI) / 180;
+                const visibleHeightAtZero = 2.0 * Math.tan(vFovRad / 2.0) * camera.position.z;
+                const visibleWidthAtZero = visibleHeightAtZero * camera.aspect;
+
+                const contentFraction = Math.min(0.76, 940 / w);
+                const clearHalfWidthWorld = (visibleWidthAtZero * 0.5) * contentFraction;
+                uniforms.uSideClearHalfWidth.value = Math.max(3.6, clearHalfWidthWorld);
+            }
+
+            updateCameraAndSideMargins();
+            window.addEventListener('resize', updateCameraAndSideMargins);
+
+            const targetMouse = new THREE.Vector2(0, 0);
+            const currentMouse = new THREE.Vector2(0, 0);
+
+            window.addEventListener('mousemove', function (e) {
+                const nx = (e.clientX / window.innerWidth) * 2 - 1;
+                const ny = -(e.clientY / window.innerHeight) * 2 + 1;
+                targetMouse.set(nx, ny);
+            });
+
+            window.addEventListener('touchmove', function (e) {
+                if (e.touches.length > 0) {
+                    const t = e.touches[0];
+                    const nx = (t.clientX / window.innerWidth) * 2 - 1;
+                    const ny = -(t.clientY / window.innerHeight) * 2 + 1;
+                    targetMouse.set(nx, ny);
+                }
+            }, { passive: true });
+
+            let targetScrollNorm = 0;
+            let currentScrollNorm = 0;
+
+            window.addEventListener('scroll', function () {
+                const scrollY = window.scrollY || window.pageYOffset || 0;
+                uniforms.uPageScrollY.value = scrollY;
+
+                const transitionRange = window.innerHeight * 0.85;
+                targetScrollNorm = Math.max(0.0, Math.min(1.0, scrollY / transitionRange));
+            }, { passive: true });
+
+            const calcTypeBtns = document.querySelectorAll('.calc-type-btn');
+            const areaSlider = document.getElementById('area-slider');
+            const areaDisplay = document.getElementById('area-display');
+            const estStations = document.getElementById('est-stations');
+            const estTime = document.getElementById('est-time');
+            const estPoints = document.getElementById('est-points');
+
+            let selectedTimeLabel = '3–5 hodin';
+
+            function updateCalculator() {
+                if (!areaSlider) return;
+                const area = parseInt(areaSlider.value, 10);
+                if (areaDisplay) areaDisplay.textContent = area.toLocaleString('cs-CZ') + ' m²';
+                const stations = Math.max(12, Math.round(area / 18));
+                if (estStations) estStations.textContent = `~ ${stations} skenů`;
+                if (estTime) estTime.textContent = area > 3500 ? '1–3 dny' : selectedTimeLabel;
+                if (estPoints) estPoints.textContent = area > 3500 ? 'do 10–14 dnů' : 'do 5–10 dnů';
+            }
+
+            calcTypeBtns.forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    calcTypeBtns.forEach(function (b) {
+                        b.className = 'calc-type-btn p-3.5 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-left transition-all';
+                        const label = b.querySelector('div:first-child');
+                        if (label) label.className = 'font-mono text-[10px] text-slate-400 uppercase';
+                    });
+                    this.className = 'calc-type-btn active p-3.5 rounded-xl border border-[#F5B82E] bg-[#F5B82E]/15 text-left transition-all';
+                    const activeLabel = this.querySelector('div:first-child');
+                    if (activeLabel) activeLabel.className = 'font-mono text-[10px] text-[#F5B82E] uppercase';
+                    selectedTimeLabel = this.getAttribute('data-btime') || '3–5 hodin';
+                    updateCalculator();
+                });
+            });
+
+            if (areaSlider) {
+                areaSlider.addEventListener('input', updateCalculator);
+            }
+
+            const inquiryForm = document.getElementById('inquiry-form');
+            const formSuccessMsg = document.getElementById('form-success-msg');
+            const closeSuccessBtn = document.getElementById('close-success-btn');
+
+            if (inquiryForm && formSuccessMsg) {
+                inquiryForm.addEventListener('submit', function (e) {
+                    e.preventDefault();
+                    formSuccessMsg.classList.remove('hidden');
+                    inquiryForm.reset();
+                });
+            }
+
+            if (closeSuccessBtn && formSuccessMsg) {
+                closeSuccessBtn.addEventListener('click', function () {
+                    formSuccessMsg.classList.add('hidden');
+                });
+            }
+
+            let lastFrameTime = performance.now();
+
+            function animate(now) {
+                requestAnimationFrame(animate);
+
+                const dt = Math.min(0.1, (now - lastFrameTime) / 1000.0);
+                lastFrameTime = now;
+
+                uniforms.uTime.value += dt;
+
+                currentMouse.x += (targetMouse.x - currentMouse.x) * 0.075;
+                currentMouse.y += (targetMouse.y - currentMouse.y) * 0.075;
+                uniforms.uMouse3D.value.copy(currentMouse);
+
+                currentScrollNorm += (targetScrollNorm - currentScrollNorm) * 0.085;
+                uniforms.uScroll.value = currentScrollNorm;
+
+                if (isMorphingPulse) {
+                    pulseRadiusVal += dt * 11.5;
+                    uniforms.uPulseRadius.value = pulseRadiusVal;
+
+                    if (pulseRadiusVal >= 13.0) {
+                        posABuffer.array.set(modelPositions[nextObjIndex]);
+                        intABuffer.array.set(modelIntensities[nextObjIndex]);
+                        posABuffer.needsUpdate = true;
+                        intABuffer.needsUpdate = true;
+
+                        currentObjIndex = nextObjIndex;
+                        isMorphingPulse = false;
+                        uniforms.uPulseRadius.value = -2.5;
+                    }
+                } else if (currentScrollNorm < 0.45) {
+                    timeUntilNextPulse -= dt;
+                    if (timeUntilNextPulse <= 0) {
+                        startPulseMorphTo((currentObjIndex + 1) % NUM_MODELS);
+                    }
+                }
+
+                renderer.render(scene, camera);
+            }
+
+            requestAnimationFrame(animate);
+        });
+    </script>
+</body>
+</html>
